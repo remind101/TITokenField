@@ -21,7 +21,7 @@
 - (void)setup;
 - (NSString *)displayStringForRepresentedObject:(id)object;
 - (NSString *)searchResultStringForRepresentedObject:(id)object;
-- (void)setSearchResultsVisible:(BOOL)visible;
+//- (void)setSearchResultsVisible:(BOOL)visible;
 - (void)resultsForSearchString:(NSString *)searchString;
 - (void)presentpopoverAtTokenFieldCaretAnimated:(BOOL)animated;
 @end
@@ -313,6 +313,8 @@
 		[_resultsTable setHidden:!visible];
 		[_tokenField setResultsModeEnabled:visible];
 	}
+    
+    _searchResultsVisible = visible;
 }
 
 - (void)resultsForSearchString:(NSString *)searchString {
