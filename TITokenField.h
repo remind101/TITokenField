@@ -64,6 +64,7 @@
 @property (nonatomic, retain) UIImage *markAlreadyTokenizedImage;
 @property (nonatomic, readonly) UIView * separator;
 @property (nonatomic, readonly) UITableView * resultsTable;
+@property (nonatomic, retain) UIFont *resultsTableFont;
 @property (nonatomic, readonly) UIView * contentView;
 @property (nonatomic, copy) NSArray * sourceArray;
 @property (nonatomic, readonly) NSArray * tokenTitles;

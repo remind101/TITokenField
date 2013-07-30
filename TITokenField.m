@@ -41,6 +41,7 @@ static int KVOContext;
 @synthesize tokenField = _tokenField;
 @synthesize markAlreadyTokenizedImage = _markAlreadyTokenizedImage;
 @synthesize resultsTable = _resultsTable;
+@synthesize resultsTableFont = _resultsTableFont;
 @synthesize contentView = _contentView;
 @synthesize separator = _separator;
 @synthesize sourceArray = _sourceArray;
@@ -240,6 +241,12 @@ static int KVOContext;
     } else {
         cell.accessoryView = nil;
     }
+    
+    if (_resultsTableFont) {
+        cell.textLabel.font = _resultsTableFont;
+    } else {
+        cell.textLabel.font = [UIFont boldSystemFontOfSize:18];
+    }
 	
 	[cell.textLabel setText:[self searchResultStringForRepresentedObject:representedObject]];
 	[cell.detailTextLabel setText:subtitle];
@@ -417,6 +424,7 @@ static int KVOContext;
     
 	[self setDelegate:nil];
 	[_resultsArray release];
+    [_resultsTableFont release];
 	[_sourceArray release];
 	[_popoverController release];
     [_markAlreadyTokenizedImage release];
