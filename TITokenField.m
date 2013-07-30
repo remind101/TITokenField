@@ -13,6 +13,8 @@
 @property (nonatomic, assign) BOOL forcePickSearchResult;
 @end
 
+static int KVOContext;
+
 //==========================================================
 #pragma mark - TITokenFieldView -
 //==========================================================
@@ -33,9 +35,11 @@
 }
 @dynamic delegate;
 @synthesize showAlreadyTokenized = _showAlreadyTokenized;
+@synthesize markAlreadyTokenized = _markAlreadyTokenized;
 @synthesize searchSubtitles = _searchSubtitles;
 @synthesize forcePickSearchResult = _forcePickSearchResult;
 @synthesize tokenField = _tokenField;
+@synthesize markAlreadyTokenizedImage = _markAlreadyTokenizedImage;
 @synthesize resultsTable = _resultsTable;
 @synthesize contentView = _contentView;
 @synthesize separator = _separator;
@@ -77,6 +81,7 @@
 	[_tokenField addTarget:self action:@selector(tokenFieldTextDidChange:) forControlEvents:UIControlEventEditingChanged];
 	[_tokenField addTarget:self action:@selector(tokenFieldFrameWillChange:) forControlEvents:TITokenFieldControlEventFrameWillChange];
 	[_tokenField addTarget:self action:@selector(tokenFieldFrameDidChange:) forControlEvents:TITokenFieldControlEventFrameDidChange];
+    [_tokenField addObserver:self forKeyPath:@"tokens" options:(NSKeyValueChangeInsertion | NSKeyValueChangeRemoval | NSKeyValueChangeReplacement) context:&KVOContext];
 	[_tokenField setDelegate:self];
 	[self addSubview:_tokenField];
 	[_tokenField release];
@@ -124,6 +129,16 @@
 	[self bringSubviewToFront:_separator];
 	[self bringSubviewToFront:_tokenField];
 	[self updateContentSize];
+}
+
+#pragma mark KVO Handling
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
+{
+    if (context == &KVOContext) {
+        [_resultsTable reloadData];
+    } else {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    }
 }
 
 #pragma mark Property Overrides
@@ -219,6 +234,12 @@
     NSString * subtitle = [self searchResultSubtitleForRepresentedObject:representedObject];
 	
 	if (!cell) cell = [[[UITableViewCell alloc] initWithStyle:(subtitle ? UITableViewCellStyleSubtitle : UITableViewCellStyleDefault) reuseIdentifier:CellIdentifier] autorelease];
+    
+    if (_markAlreadyTokenized && _markAlreadyTokenizedImage && [_tokenField tokenForRepresentedObject:representedObject]) {
+        cell.accessoryView = [[[UIImageView alloc] initWithImage:_markAlreadyTokenizedImage] autorelease];
+    } else {
+        cell.accessoryView = nil;
+    }
 	
 	[cell.textLabel setText:[self searchResultStringForRepresentedObject:representedObject]];
 	[cell.detailTextLabel setText:subtitle];
@@ -227,14 +248,29 @@
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-	
+    
 	id representedObject = [_resultsArray objectAtIndex:indexPath.row];
-    TIToken * token = [[TIToken alloc] initWithTitle:[self displayStringForRepresentedObject:representedObject] representedObject:representedObject];
-    [_tokenField addToken:token];
-	[token release];
-	
-	[tableView deselectRowAtIndexPath:indexPath animated:YES];
-	[self setSearchResultsVisible:NO];
+    
+    if (_markAlreadyTokenized) {    // Performance boost by keeping search inside if block for large sets of tokens.
+        TIToken *token = [_tokenField tokenForRepresentedObject:representedObject];
+        if (token) {
+            [_tokenField removeToken:token];
+        } else {
+            TIToken * token = [[TIToken alloc] initWithTitle:[self displayStringForRepresentedObject:representedObject] representedObject:representedObject];
+            [_tokenField addToken:token];
+            [token release];
+        }
+        [self resultsForSearchString:_tokenField.text];
+        [_resultsTable reloadData];
+    } else {
+        TIToken * token = [[TIToken alloc] initWithTitle:[self displayStringForRepresentedObject:representedObject] representedObject:representedObject];
+        [_tokenField addToken:token];
+        [token release];
+        
+        [self setSearchResultsVisible:NO];
+    }
+    
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 
 #pragma mark TextField Methods
@@ -341,15 +377,13 @@
 				[querySubtitle rangeOfString:searchString options:NSCaseInsensitiveSearch].location != NSNotFound ||
                 (_forcePickSearchResult && searchString.length == 0)){
 				
-				__block BOOL shouldAdd = ![_resultsArray containsObject:sourceObject];
-				if (shouldAdd && !_showAlreadyTokenized){
-					
-					[_tokenField.tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *secondStop){
-						if ([token.representedObject isEqual:sourceObject]){
-							shouldAdd = NO;
-							*secondStop = YES;
-						}
-					}];
+				BOOL shouldAdd = ![_resultsArray containsObject:sourceObject];
+				if (shouldAdd) {
+                    
+                    TIToken *token = [_tokenField tokenForRepresentedObject:sourceObject];
+                    if (token) {
+                        shouldAdd = _showAlreadyTokenized;
+                    }
 				}
 				
 				if (shouldAdd) [_resultsArray addObject:sourceObject];
@@ -379,10 +413,13 @@
 }
 
 - (void)dealloc {
+    [_tokenField removeObserver:self forKeyPath:@"tokens"];
+    
 	[self setDelegate:nil];
 	[_resultsArray release];
 	[_sourceArray release];
 	[_popoverController release];
+    [_markAlreadyTokenizedImage release];
 	[super dealloc];
 }
 
@@ -630,7 +667,8 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 		[self addSubview:token];
 		
 		if (![_tokens containsObject:token]) {
-			[_tokens addObject:token];
+            // KVO!
+            [self insertObject:token inTokensAtIndex:[_tokens count]];
 		
 			if ([delegate respondsToSelector:@selector(tokenField:didAddToken:)]){
 				[delegate tokenField:self didAddToken:token];
@@ -639,7 +677,11 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
             [_placeHolderLabel setHidden:YES];
 		}
 		
-		[self setResultsModeEnabled:NO];
+        if (_forcePickSearchResult) {
+            [self setResultsModeEnabled:YES];
+        } else {
+            [self setResultsModeEnabled:NO];
+        }
 		[self deselectSelectedToken];
 	}
 }
@@ -658,7 +700,8 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 		[[token retain] autorelease];
 		
 		[token removeFromSuperview];
-		[_tokens removeObject:token];
+        // KVO blast!
+        [self removeObjectFromTokensAtIndex:[_tokens indexOfObject:token]];
 		
 		if ([delegate respondsToSelector:@selector(tokenField:didRemoveToken:)]){
 			[delegate tokenField:self didRemoveToken:token];
@@ -761,6 +804,19 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	}];
 	
 	return _tokenCaret.y + lineHeight;
+}
+
+- (TIToken *)tokenForRepresentedObject:(id)representedObject
+{
+    __block TIToken *returnedToken = nil;
+    [self.tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *stop){
+        if ([token.representedObject isEqual:representedObject]){
+            returnedToken = token;
+            *stop = YES;
+        }
+    }];
+    
+    return returnedToken;
 }
 
 #pragma mark View Handlers
@@ -914,6 +970,54 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	[_tokens release];
 	[_tokenizingCharacters release];
     [super dealloc];
+}
+
+#pragma mark - Tokens KVO compliance
+
+// Getters
+- (NSUInteger)countOfTokens {
+    return _tokens.count;
+}
+
+- (id)objectInTokensAtIndex:(NSUInteger)index {
+    return [_tokens objectAtIndex:index];
+}
+
+- (NSArray *)tokensAtIndexes:(NSIndexSet *)indexes {
+    return [_tokens objectsAtIndexes:indexes];
+}
+
+- (void)getTokens:(TIToken * __unsafe_unretained *)buffer range:(NSRange)inRange {
+    // Return the objects in the specified range in the provided buffer.
+    // For example, if the tokens were stored in an underlying NSArray
+    [_tokens getObjects:buffer range:inRange];
+}
+
+// Accessors
+- (void)insertObject:(TIToken *)object inTokensAtIndex:(NSUInteger)index {
+    [_tokens insertObject:object atIndex:index];
+}
+
+- (void)insertTokens:(NSArray *)array atIndexes:(NSIndexSet *)indexes {
+    [_tokens insertObjects:array atIndexes:indexes];
+}
+
+- (void)removeObjectFromTokensAtIndex:(NSUInteger)index
+{
+    [_tokens removeObjectAtIndex:index];
+}
+
+- (void)removeTokensAtIndexes:(NSIndexSet *)indexes
+{
+    [_tokens removeObjectsAtIndexes:indexes];
+}
+
+- (void)replaceObjectInTokensAtIndex:(NSUInteger)index withObject:(id)object {
+    [_tokens replaceObjectAtIndex:index withObject:object];
+}
+
+- (void)replaceTokensAtIndexes:(NSIndexSet *)indexes withTokens:(NSArray *)array {
+    [_tokens replaceObjectsAtIndexes:indexes withObjects:array];
 }
 
 @end

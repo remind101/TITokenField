@@ -56,10 +56,12 @@
 //==========================================================
 @interface TITokenFieldView : UIScrollView <UITableViewDelegate, UITableViewDataSource, TITokenFieldDelegate>
 @property (nonatomic, assign) BOOL showAlreadyTokenized;
+@property (nonatomic, assign) BOOL markAlreadyTokenized;
 @property (nonatomic, assign) BOOL searchSubtitles;
 @property (nonatomic, assign) BOOL forcePickSearchResult;
 @property (nonatomic, assign) BOOL searchResultsVisible;
 @property (nonatomic, readonly) TITokenField * tokenField;
+@property (nonatomic, retain) UIImage *markAlreadyTokenizedImage;
 @property (nonatomic, readonly) UIView * separator;
 @property (nonatomic, readonly) UITableView * resultsTable;
 @property (nonatomic, readonly) UIView * contentView;
@@ -95,6 +97,7 @@ typedef enum {
 - (TIToken *)addTokenWithTitle:(NSString *)title representedObject:(id)object;
 - (void)removeToken:(TIToken *)token;
 - (void)removeAllTokens;
+- (TIToken *)tokenForRepresentedObject:(id)representedObject;
 
 - (void)selectToken:(TIToken *)token;
 - (void)deselectSelectedToken;
