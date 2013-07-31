@@ -685,11 +685,12 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
             [_placeHolderLabel setHidden:YES];
 		}
 		
-        if (_forcePickSearchResult) {
-            [self setResultsModeEnabled:YES];
-        } else {
+        // TODO: Need a cleaner API for displaying the shadow and animating the tokens.
+        //if (_forcePickSearchResult) {
+            //[self setResultsModeEnabled:YES];
+        //} else {
             [self setResultsModeEnabled:NO];
-        }
+        //}
 		[self deselectSelectedToken];
 	}
 }
