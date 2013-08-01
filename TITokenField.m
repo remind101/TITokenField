@@ -30,6 +30,7 @@ static int KVOContext;
 
 @implementation TITokenFieldView {
 	UIView * _contentView;
+    CGRect _resultsFrame;
 	NSMutableArray * _resultsArray;
 	UIPopoverController * _popoverController;
 }
@@ -115,7 +116,8 @@ static int KVOContext;
 	}
 	else
 	{
-		_resultsTable = [[UITableView alloc] initWithFrame:CGRectMake(0, tokenFieldBottom + 1, self.bounds.size.width, 10)];
+        _resultsFrame = CGRectMake(0, tokenFieldBottom + 1, self.bounds.size.width, 0);
+		_resultsTable = [[UITableView alloc] initWithFrame:CGRectMake(0, tokenFieldBottom + 1, self.bounds.size.width, 0)];
 		[_resultsTable setSeparatorColor:[UIColor colorWithWhite:0.85 alpha:1]];
 		[_resultsTable setBackgroundColor:[UIColor colorWithRed:0.92 green:0.92 blue:0.92 alpha:1]];
 		[_resultsTable setDelegate:self];
@@ -126,6 +128,8 @@ static int KVOContext;
 		
 		_popoverController = nil;
 	}
+    
+    [_resultsTable addObserver:self forKeyPath:@"frame" options:NSKeyValueObservingOptionNew context:&KVOContext];
 	
 	[self bringSubviewToFront:_separator];
 	[self bringSubviewToFront:_tokenField];
@@ -136,7 +140,11 @@ static int KVOContext;
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
 {
     if (context == &KVOContext) {
-        [_resultsTable reloadData];
+        if (object == _resultsTable) {
+            NSLog(@"_resultsTable frame = (%f, %f, %f, %f)", _resultsTable.frame.origin.x, _resultsTable.frame.origin.y, _resultsTable.frame.size.width, _resultsTable.frame.size.height);
+        } else {
+            [_resultsTable reloadData];
+        }
     } else {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
     }
@@ -147,7 +155,9 @@ static int KVOContext;
 	
 	[super setFrame:frame];
 	
+    // Adjust all of our subviews for the new frame's width.
 	CGFloat width = frame.size.width;
+    _resultsFrame.size.width = width;
 	[_separator setFrame:((CGRect){_separator.frame.origin, {width, _separator.bounds.size.height}})];
 	[_resultsTable setFrame:((CGRect){_resultsTable.frame.origin, {width, _resultsTable.bounds.size.height}})];
 	[_contentView setFrame:((CGRect){_contentView.frame.origin, {width, (frame.size.height - CGRectGetMaxY(_tokenField.frame))}})];
@@ -159,12 +169,12 @@ static int KVOContext;
 	}
 	
 	[self updateContentSize];
-	[self layoutSubviews];
+    [self setNeedsLayout];
 }
 
 - (void)setContentOffset:(CGPoint)offset {
 	[super setContentOffset:offset];
-	[self layoutSubviews];
+	[self setNeedsLayout];
 }
 
 - (NSArray *)tokenTitles {
@@ -182,9 +192,10 @@ static int KVOContext;
 	
 	[super layoutSubviews];
 	
-	CGFloat relativeFieldHeight = CGRectGetMaxY(_tokenField.frame) - self.contentOffset.y;
-	CGFloat newHeight = self.bounds.size.height - relativeFieldHeight;
-	if (newHeight > -1) [_resultsTable setFrame:((CGRect){_resultsTable.frame.origin, {_resultsTable.bounds.size.width, newHeight}})];
+	CGFloat relativeTokenFieldHeight = CGRectGetMaxY(_tokenField.frame) - self.contentOffset.y;  // content offset is usually 0.
+	CGFloat heightAfterTokenField = self.bounds.size.height - relativeTokenFieldHeight;
+	//if (heightAfterTokenField > -1) _resultsTable.frame = (CGRect){_resultsTable.frame.origin, {_resultsTable.bounds.size.width, _resultsTable.hidden ? 0 : heightAfterTokenField}};
+    if (heightAfterTokenField > -1) _resultsFrame = (CGRect){_resultsFrame.origin, {_resultsFrame.size.width, heightAfterTokenField}};
 }
 
 - (void)updateContentSize {
@@ -306,6 +317,7 @@ static int KVOContext;
 	CGFloat tokenFieldBottom = CGRectGetMaxY(_tokenField.frame);
 	[_separator setFrame:((CGRect){{_separator.frame.origin.x, tokenFieldBottom}, _separator.bounds.size})];
 	[_resultsTable setFrame:((CGRect){{_resultsTable.frame.origin.x, (tokenFieldBottom + 1)}, _resultsTable.bounds.size})];
+    _resultsFrame = (CGRect){{_resultsFrame.origin.x, (tokenFieldBottom + 1)}, _resultsFrame.size};
 	[_contentView setFrame:((CGRect){{_contentView.frame.origin.x, (tokenFieldBottom + 1)}, _contentView.bounds.size})];
 }
 
@@ -353,7 +365,21 @@ static int KVOContext;
 	}
 	else
 	{
-		[_resultsTable setHidden:!visible];
+        if (visible) {
+            [_resultsTable setHidden:!visible];
+            //_resultsTable.frame = (CGRect){_resultsTable.frame.origin, {_resultsTable.frame.size.width, 0}};
+            [UIView animateWithDuration:3 animations:^{
+                _resultsTable.frame = _resultsFrame;
+                _contentView.frame = (CGRect){{_contentView.frame.origin.x, _contentView.frame.origin.y + _resultsFrame.size.height-20}, {_contentView.frame.size.width, _contentView.frame.size.height}};// - _resultsFrame.size.height}};
+            }];
+        } else {
+            [UIView animateWithDuration:3 animations:^{
+                _resultsTable.frame = (CGRect){_resultsTable.frame.origin, {_resultsTable.frame.size.width, 0}};
+                _contentView.frame = (CGRect){{_contentView.frame.origin.x, _contentView.frame.origin.y - _resultsFrame.size.height}, {_contentView.frame.size.width, _contentView.frame.size.height}};// + _resultsFrame.size.height}};
+            } completion:^(BOOL finished) {
+                [_resultsTable setHidden:!visible];
+            }];
+        }
 		[_tokenField setResultsModeEnabled:visible];
 	}
     
@@ -421,6 +447,7 @@ static int KVOContext;
 
 - (void)dealloc {
     [_tokenField removeObserver:self forKeyPath:@"tokens"];
+    [_resultsTable removeObserver:self forKeyPath:@"frame"];
     
 	[self setDelegate:nil];
 	[_resultsArray release];
@@ -572,6 +599,10 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 
 #pragma mark Event Handling
 - (BOOL)becomeFirstResponder {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self reloadInputViews];
+    });
+    
 	return (_editable ? [super becomeFirstResponder] : NO);
 }
 
