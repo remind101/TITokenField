@@ -283,12 +283,13 @@ static int KVOContext;
 #pragma mark TextField Methods
 
 - (void)tokenFieldDidBeginEditing:(TITokenField *)field {
-	[_resultsArray removeAllObjects];
-	[_resultsTable reloadData];
+	[self resultsForSearchString:field.text];
+    [self setSearchResultsVisible:YES];
 }
 
 - (void)tokenFieldDidEndEditing:(TITokenField *)field {
-	[self tokenFieldDidBeginEditing:field];
+    [_resultsArray removeAllObjects];
+	[_resultsTable reloadData];
 }
 
 - (void)tokenFieldTextDidChange:(TITokenField *)field {
